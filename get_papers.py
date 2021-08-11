@@ -17,6 +17,21 @@ import pickle
 timeout = 5
 socket.setdefaulttimeout(timeout)
 
+'''
+TODO:
+1. Add async call to the download function so it doesn't take THAT long.
+2. Add the actual manager class.
+    2.1 Read from CSV
+    2.2 Write to CSV
+    2.3 Check for any problems (not downloaded)
+3. Make GUI (maybe just to input notes into? Self written paper summary.)
+4. Read bool
+'''
+
+
+
+
+
 
 class Crawler:
     # 睡眠时长
@@ -31,7 +46,6 @@ class Crawler:
         self.save_path = save_path
         self.time_sleep = t
 
-
     def get_val_between(self, text, a, b, ptr, lmt=50):
         try: 
             start_index = text.index(a, ptr)+len(a)
@@ -43,7 +57,6 @@ class Crawler:
 
         # if len(val) > lmt: return False, start_index+1
         return val, end_index
-
 
     def parse(self, text):
         if text == None: return
@@ -63,11 +76,11 @@ class Crawler:
 
         return information
 
-    
     def download_pdf(self, url, title, date):
         try:
             if not os.path.exists(self.save_path): os.mkdir(self.save_path)
             title = date.replace("/", "") +" "+ title.replace(":", " ") + ".pdf"
+            if len(title) > 50: title[:49]
             file_path = os.path.join(self.save_path, title)
             # 设置header防403
             time.sleep(self.time_sleep)
@@ -76,8 +89,8 @@ class Crawler:
                 ('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36'),
             ]
             urllib.request.install_opener(opener)
-            # urllib.request.urlretrieve(url, file_path)
-            return True
+            urllib.request.urlretrieve(url, file_path)
+            return file_path
         except urllib.error.HTTPError as urllib_err:
             print(urllib_err)
             return False
@@ -86,18 +99,12 @@ class Crawler:
             print(err)
             return False
 
-
-
-
-
-
-
     def save_csv(self,info_batch):
         if len(info_batch):
             if not os.path.exists(self.save_path): os.mkdir(self.save_path)
             file_path = os.path.join(self.save_path, "paper_info.csv")
 
-            with open(file_path, 'w', encoding="utf-8") as f:  # You will need 'wb' mode in Python 2.x
+            with open(file_path, 'a', encoding="utf-8") as f:  # You will need 'wb' mode in Python 2.x
                 w = csv.DictWriter(f, info_batch[0].keys())
                 w.writeheader()
                 for info in info_batch:
@@ -107,8 +114,6 @@ class Crawler:
         else:
             print("Save to csv called but info is empty!")
             
-
-
     # 开始获取
     def get_info(self, url):
         blank_links = []
@@ -137,31 +142,62 @@ class Crawler:
             blank_links.append(url)
         print(f"Errors: {blank_links}")
             
-
-
-
     def run(self):
         """
         爬虫入口
 
         """
         info_batch = []
-        links = ["https://arxiv.org/abs/2106.11776", "https://arxiv.org/abs/2107.00372", "https://arxiv.org/abs/2108.02947",
+        links_old = ["https://arxiv.org/abs/2106.11776", "https://arxiv.org/abs/2107.00372", "https://arxiv.org/abs/2108.02947",
                  "https://arxiv.org/abs/1812.05944", "https://arxiv.org/abs/2104.01495", "https://arxiv.org/abs/2103.05423",
-                 "https://arxiv.org/abs/2001.05566", ""]
+                 "https://arxiv.org/abs/2001.05566"]
+        
+        links = ["https://arxiv.org/abs/2103.03375", "https://arxiv.org/abs/2108.02947", "https://arxiv.org/abs/1812.05944"]
 
         with tqdm(range(len(links))) as pbar:
             for i in links:
                 item_raw_info = self.get_info(i)
                 item_dict = self.parse(item_raw_info)
-                downloaded = self.download_pdf(item_dict["pdf"], item_dict["title"], item_dict["date"])
+                path_or_false = self.download_pdf(item_dict["pdf"], item_dict["title"], item_dict["date"])
 
-                item_dict["downloaded"] = downloaded
+                item_dict["downloaded"] = path_or_false
                 info_batch.append(item_dict)
+                pbar.update(1)
 
         self.save_csv(info_batch)
         print("Finished!")
             
+
+class Paper:
+    def __init__(self, id, authors, abstract, downloaded, date, citations, source, notes=''):
+        self.id = id
+        self.authors = authors 
+        self.abstract = abstract
+        self.downloaded = downloaded
+        self.date = date
+        self.citations = citations
+        self.source = source
+        self.notes = notes
+    
+    def as_dict(self):
+        return self.__dict__
+    
+    def make_notes(self, text):
+        self.notes = text
+
+
+class ArxivPaper(Paper):
+    def __init__(self, id, authors, abstract, downloaded, date, citations, source, notes):
+        super.Paper(id, authors, abstract, downloaded, date, citations, source, notes)
+        self.root_page = self.get_root_page(id)
+        self.download_page = self.get_download_page(id)
+
+    def get_root_page(self, id):
+        return f"https://arxiv.org/abs/{id}"
+
+    def get_download_page(self, id):
+        return f"https://arxiv.org/pdf/{id}.pdf"
+
 
 
 if __name__ == '__main__':
@@ -171,4 +207,4 @@ if __name__ == '__main__':
 
 
     crawler = Crawler(t=1, save_path="arxiv_data/")  # 抓取延迟为 0.05
-    crawler.run()
+    # crawler.run()
